@@ -2,7 +2,7 @@
 
 > 秋知的自创自用 AI 技能库，让 AI 更懂我。
 
-![License](https://img.shields.io/badge/License-MIT-blue.svg)
+![License](https://img.shields.io/badge/License-MIT-blue.svg)
 
 * * *
 
