@@ -72,6 +72,9 @@ npx skills add AdgaiWalker/Skills-Walker --skill project-front-generator
 
 ## 它是怎么工作的
 
+你可以把它理解成一个门面送审流程：
+AI 先整理材料、补齐缺项、送到关口；人不亲自搬运和制单，只负责审核、放行或打回。
+
 这个 skill 不是盲写，而是按下面的顺序工作：
 
 1. 先调查当前仓库状态并推荐执行模式
