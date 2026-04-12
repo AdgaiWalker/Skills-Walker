@@ -7,6 +7,10 @@ All notable changes to this project will be documented in this file.
 ### Added
 - 待开发清单：Obsidian文件管理、自媒体脚本抓取、飞书自动上传等
 
+### Changed
+- `README生成` 更名为 `项目门面生成器`
+- 技能定位从单一 README 生成扩展为项目对外展示材料整理，包含 LICENSE 与 Git 发布建议
+
 ---
 
 ## [v2026.03.14] - 2026-03-14
