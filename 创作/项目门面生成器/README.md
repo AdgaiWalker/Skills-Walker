@@ -74,6 +74,7 @@ npx skills add AdgaiWalker/Skills-Walker --skill project-front-generator
 
 你可以把它理解成一个门面送审流程：
 AI 先整理材料、补齐缺项、送到关口；人不亲自搬运和制单，只负责审核、放行或打回。
+Git 负责让文件安全，人负责把住质量，AI 负责让这套流程更有效率。
 
 这个 skill 不是盲写，而是按下面的顺序工作：
 
