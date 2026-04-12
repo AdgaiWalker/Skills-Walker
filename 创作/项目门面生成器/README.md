@@ -1,12 +1,39 @@
-# README 生成器
+# 项目门面生成器
 
 [![Type](https://img.shields.io/badge/Type-Skill-3b82f6?style=for-the-badge)](#)
 [![Mode](https://img.shields.io/badge/Context-First-111827?style=for-the-badge)](#)
-[![Output](https://img.shields.io/badge/Output-README-f59e0b?style=for-the-badge)](#)
+[![Output](https://img.shields.io/badge/Output-Project%20Front-f59e0b?style=for-the-badge)](#)
 [![License](https://img.shields.io/badge/License-MIT-84cc16?style=for-the-badge)](#)
 
-基于充分上下文，直接生成或优化 README。  
+基于充分上下文，生成项目对外展示所需的 README 与收尾材料。  
 它的原则很简单：**人只做决策，AI 负责分析、生成、整理与执行。**
+
+## 安装
+
+### 方式 1：命令安装
+
+```bash
+npx skills add AdgaiWalker/Skills-Walker --skill project-front-generator
+```
+
+这条命令适用于支持 Agent Skills 标准的终端代理。常见场景包括 Claude Code、Codex、Gemini CLI、OpenCode、Command Code、OpenClaw。
+
+### 方式 2：让 AI 帮你安装
+
+把下面这段话直接发给你的 AI 即可：
+
+```text
+帮我安装这个 skill：
+https://github.com/AdgaiWalker/Skills-Walker
+
+skill 名称：project-front-generator
+
+请帮我用合适的方式完成安装。
+如果支持命令安装，优先使用：
+npx skills add AdgaiWalker/Skills-Walker --skill project-front-generator
+
+安装完成后，告诉我最短怎么调用它。
+```
 
 ## 核心特点
 
@@ -15,6 +42,7 @@
 - 支持已有 README 的重构与美化
 - 标准风格下可优先使用“封面式开头”
 - README 完成后，继续给出 `LICENSE / Git` 后续建议
+- 目标不是只写文档，而是把项目整理到“能见人、能介绍、能发布”的状态
 
 ## 适用前提
 
@@ -121,9 +149,19 @@ API
 ## 使用方式
 
 1. 先让 AI 读取项目、文档或已有 README。
-2. 直接说：`生成 README`、`写 README`、`美化 README`、`优化 README`。
+2. 直接说：`生成 README`、`美化 README`、`整理项目门面`、`准备发布材料`。
 3. 如果关键信息缺失，AI 再补问少量选项。
 4. README 完成后，AI 继续给出 `LICENSE / Git` 后续建议。
+
+### 终端代理里的调用示例
+
+安装完成后，直接在终端代理里这样说：
+
+```text
+用项目门面生成器帮我整理这个仓库。
+先做一个适合展示的 README，
+再补 LICENSE 和发布建议。
+```
 
 ## README 完成后的后续建议
 
