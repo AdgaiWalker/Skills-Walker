@@ -89,12 +89,13 @@
 
 ## 参考与来源
 
-这个条目不是从零新写的一套能力，而是把现有已安装 skill 接入到创作库中，方便统一使用和管理。
+这个条目不是从零独立原创的一整套能力，而是基于现有信息卡相关 skill 做的实验区接入。
 
-来源基础：
+明确来源：
 
-- 原始 skill 名称：`editorial-card-screenshot`
+- 源文件下载位置：[shaom/infocard-skills](https://github.com/shaom/infocard-skills?tab=readme-ov-file)
+- 当前接入能力名：`editorial-card-screenshot`
 - 当前接入方式：保留原始 `skill.md`、`assets/`、`references/`、`scripts/`
 - 本仓库补充内容：人看 README、创作库索引、实验区归档
 
-如果后面继续迭代，这个条目应继续保留“引入型 skill”的来源说明，不应误写成完全独立原创。
+如果后面继续迭代，这个条目应继续保留来源说明，不应误写成完全独立原创。
