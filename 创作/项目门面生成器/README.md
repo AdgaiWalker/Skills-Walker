@@ -407,3 +407,4 @@ README 不是终点，门面收尾才算完成
 如果你想继续深入使用这个 skill，或者研究这套 README 方法论和工作框架，直接看下面这份总纲：
 
 - [README框架总纲](</E:/桌面/skills测试台/Skills-Walker/创作/项目门面生成器/README框架总纲.md>)
+- [交接字段协议](</E:/桌面/skills测试台/Skills-Walker/创作/项目门面生成器/交接字段协议.md>)
