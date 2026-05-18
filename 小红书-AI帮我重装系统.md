@@ -46,6 +46,6 @@
 
 ---
 
-仓库地址：https://github.com/AdgaiWalker/Walker-skills-test/tree/main/reinstall-kit
+仓库地址：https://github.com/AdgaiWalker/Walker-skills-test/tree/main/windows-reinstall
 
 #重装系统 #Windows #AI工具 #Claude #断舍离 #效率工具 #备份恢复 #数字生活
