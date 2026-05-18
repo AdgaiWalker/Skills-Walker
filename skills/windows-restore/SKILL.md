@@ -27,29 +27,34 @@ description: >
 AI 不是万能的。恢复过程中有些事 AI 能自动完成，有些必须人类手动。搞清楚分工很重要，避免浪费时间等待一个注定失败的自动安装。
 
 ### AI 能自动完成的
-- **winget 安装**：Git、VS Code、Python、Chrome、WinRAR、OBS 等（`winget install <id>`）
 - **npm 全局包**：pnpm、claude-code、playwright、ast-grep 等（`npm install -g <pkg>`）
 - **Git 操作**：clone 仓库、恢复 .gitconfig、push 验证
 - **配置文件恢复**：复制 .npmrc、settings.json、ssh 目录、替换路径
 - **验证检查**：--version、路径检查、完整性审查
+- **NVM 版本安装**：人类装好 NVM 后，AI 执行 `nvm install <version>`
 
-### AI 装不了，需要人类手动安装的
-- **NVM for Windows** — 必须从 GitHub releases 下载 GUI 安装包。装完 NVM 后，AI 才能接管 `nvm install <version>`
-- **输入法** — 微信输入法、搜狗等，都需要下载安装器
-- **VPN 工具** — FlClash、Clash 等
-- **AI 桌面应用** — CC Switch、AutoGLM 等
-- **Adobe 全家桶** — 需要解压安装包、运行安装器
-- **设计工具** — Figma、Blender 等
-- **自媒体工具** — 剪映、必剪、直播伴侣等
-- **其他需要 GUI 安装器的软件**
+### 人类自己装的（大多数人都知道怎么装，不需要 AI）
+- **浏览器**：Chrome、Edge、Firefox
+- **解压工具**：WinRAR、7-Zip
+- **输入法**：微信输入法、搜狗等
+- **VPN**：FlClash、Clash 等
+- **聊天/社交**：微信、QQ、Discord
+- **常用应用**：OBS、剪映、直播工具、视频播放器、下载工具
+- **设计软件**：Adobe、Figma、Blender
+- **AI 桌面应用**：CC Switch、AutoGLM 等
+- **任何需要 GUI 安装器的软件**
+
+### 为什么这样分工
+
+浏览器、输入法、聊天工具这些是日常应用，人类自己装反而更快（下载、双击、下一步）。AI 的真正价值在于处理那些**散落各处、容易遗漏、记不住的东西**：配置文件在哪、装了什么版本、哪些全局包、哪些仓库、路径怎么改。这些才是重装后真正花时间的地方。
 
 ### 恢复流程的正确模式
 
 ```
-AI 自动安装能装的 → 生成「人类待办清单」→ 人类手动装剩下的 → AI 验证全部完成
+人类自己装日常应用 → AI 处理开发环境和配置 → AI 验证完整性
 ```
 
-每完成一层，AI 把"需要人类手动安装的"整理成清单，附上下载链接或说明。不要试图自动安装 GUI 软件，会失败。
+AI 不生成"人类待办清单"让人类装基础工具，而是假设人类已经装好了日常应用，AI 专注于恢复开发环境。
 
 ## 恢复前置：定位并读取 profile
 
@@ -75,23 +80,19 @@ foreach ($d in $drives) {
 
 ### 第一层：工作基础
 
-目标：能上网、能用 AI、能输入。
+目标：人类已装好日常应用，AI 确认基础条件满足。
 
-**AI 自动安装：**
+**前提：人类已经自己装好了**浏览器、输入法、VPN 等日常工具。这些不需要 AI 介入。
+
+**AI 检查：**
 ```powershell
-winget install Google.Chrome
-winget install RARLab.WinRAR
+# 确认基础条件满足
+Test-Path "$env:ProgramFiles\Google\Chrome\Application\chrome.exe"
+# 或确认能联网
+Test-NetConnection www.baidu.com
 ```
 
-**人类待办清单（AI 生成，人类执行）：**
-根据 profile 中记录的应用，列出需要手动安装的：
-- 输入法（微信输入法 / 搜狗 / 其他 profile 记录的）
-- VPN 工具（FlClash / 其他）
-- AI 桌面应用（CC Switch / AutoGLM / 其他）
-
-每个待办项附上：软件名、用途、下载方式（官网/备份盘路径）。
-
-验证：浏览器能打开网页、输入法切换正常。
+如果人类还没装好，提醒一下就好，不要试图自动安装。
 
 ### 第二层：开发环境
 
@@ -100,10 +101,9 @@ winget install RARLab.WinRAR
 所有版本号和配置从 profile 读取，不硬编码。
 
 **1. Git**
-```powershell
-winget install Git.Git
-```
-还原 .gitconfig → `~/.gitconfig`
+
+确认人类已安装 Git，如果没装提示人类装一下。装好后 AI 恢复配置：
+- 还原 .gitconfig → `~/.gitconfig`
 - 用 profile.backup_meta.source_paths.gitconfig 定位备份文件
 - **替换旧用户名**：profile 中的 `system.username`（如 "Administrator"）→ 当前 `$env:USERNAME`
 - **替换旧盘符**：如果路径变了，替换 .gitconfig 中的盘符
@@ -142,14 +142,12 @@ npm install -g pnpm
 - 确认 prefix 和 cache 路径在新系统上有效
 
 **6. Python**
-```powershell
-winget install Python.Python.<profile.python 中记录的大版本号>
-```
+
+确认人类已安装 Python，如果没装提示人类装一下。版本参考 profile.python.version。
 
 **7. VS Code**
-```powershell
-winget install Microsoft.VisualStudioCode
-```
+
+确认人类已安装 VS Code，如果没装提示人类装一下。装好后 AI 恢复配置：
 - 还原 settings.json（从 profile 定位备份路径）
 - 如果 profile.vscode.has_snippets=true，还原 snippets
 - 批量安装扩展：
