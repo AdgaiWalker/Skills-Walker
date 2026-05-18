@@ -46,7 +46,7 @@ description: >
 
 2. **SSH**
    - 还原 ssh/ 目录到 `~/.ssh/`
-   - 确认权限：私钥文件权限应限制
+   - **注意**：先检查备份里是否真的有密钥文件（id_rsa、id_ed25519 等）。如果只有 config 和 known_hosts，说明之前就没有用 SSH 密钥，跳过即可
 
 3. **Node.js（NVM for Windows）**
    - 下载安装 NVM for Windows（https://github.com/yuruotong1/nvm-windows/releases）
@@ -67,7 +67,7 @@ description: >
 7. **VS Code**
    - 安装 VS Code
    - 还原 settings.json → `AppData\Roaming\Code\User\`
-   - 还原 snippets → `AppData\Roaming\Code\User\snippets\`
+   - 还原 snippets（如果备份中有的话）→ `AppData\Roaming\Code\User\snippets\`
    - 批量安装扩展：
      ```powershell
      Get-Content <备份路径>\vscode-extensions\extensions.txt | ForEach-Object { code --install-extension $_ }
@@ -82,6 +82,11 @@ description: >
 
 10. **Windows Terminal**
     - 还原 settings.json 到 `AppData\Local\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\`
+
+11. **Chrome 书签**
+    - 如果备份了多个 Profile 的书签文件（Profile-7-Bookmarks 等），先安装 Chrome 并登录 Google 账号同步
+    - 如果没有 Google 同步：把备份的 Bookmarks 文件复制到对应 Profile 目录下
+    - Profile 目录位置：`AppData\Local\Google\Chrome\User Data\Profile N\`
 
 验证：`git --version`、`node --version`、`pnpm --version`、`python --version`、`code --version`、`claude --version` 全部通过。
 
@@ -124,13 +129,13 @@ Blog 恢复：在 blog 目录执行 `pnpm install`。
 | 目录 | 内容 |
 |------|------|
 | `dotfiles\` | .gitconfig, .npmrc |
-| `ssh\` | SSH 配置和密钥 |
+| `ssh\` | SSH 配置和密钥（可能没有密钥，如果只有 config 和 known_hosts 说明之前就用 HTTPS） |
 | `vscode\` | settings.json, snippets |
 | `vscode-extensions\` | 扩展列表 |
 | `terminal\` | Windows Terminal 设置 |
 | `claude\` | Claude Code 配置和项目记忆 |
 | `skills\` | Claude Skills + Minimax Skills |
-| `chrome\` | Chrome 书签和偏好 |
+| `chrome\` | Chrome 书签（可能有多个 Profile：Profile-7、Profile-8 等） |
 | `obsidian\` | Obsidian 配置 |
 | `npm-global-list\` | npm 全局包列表 |
 | `dev-env-info\` | 环境版本快照 |
@@ -170,3 +175,31 @@ openclaw
 ```
 
 其他按需安装的包见 `npm-global-list\npm-global.txt`。
+
+## 恢复后审查
+
+每完成一层，执行审查：
+
+```powershell
+# 版本验证
+Write-Output "git: $(git --version)"
+Write-Output "node: $(node --version)"
+Write-Output "pnpm: $(pnpm --version)"
+Write-Output "python: $(python --version)"
+
+# 配置路径检查 — 确保旧用户名/盘符没有残留
+$gitconfig = Get-Content ~/.gitconfig -Raw
+if ($gitconfig -match "Administrator") { Write-Output "警告: .gitconfig 中仍有旧用户名 Administrator" }
+
+$npmrc = Get-Content ~/.npmrc -Raw
+if ($npmrc -match "Administrator") { Write-Output "警告: .npmrc 中仍有旧用户名 Administrator" }
+```
+
+最终审查清单：
+1. 所有 `--version` 检查通过
+2. .gitconfig 里没有旧用户名/旧盘符
+3. .npmrc 里没有旧用户名/旧盘符
+4. VS Code 能启动，扩展列表完整
+5. Claude Code 能运行，skills 目录存在
+6. `git push` 测试（第一次需要重新登录 GitHub）
+7. blog 能 `pnpm dev` 启动

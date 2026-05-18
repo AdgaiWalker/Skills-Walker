@@ -25,12 +25,12 @@ description: >
 | 配置 | 路径 | 说明 |
 |------|------|------|
 | Git 配置 | `~/.gitconfig` | 用户名、邮箱、alias、editor |
-| SSH 密钥 | `~/.ssh/` | 私钥丢失无法恢复，优先级最高 |
+| SSH 密钥 | `~/.ssh/` | **先检查是否真的有密钥文件**（id_rsa、id_ed25519 等）。有些人只用 HTTPS，目录存在但内容是空的 — 这种情况不需要备份，恢复时注明"无需恢复 SSH" |
 | npm 配置 | `~/.npmrc` | prefix、cache、registry |
 | pnpm store 路径 | `pnpm store path` | 记录位置，不需要复制 |
 | NVM 版本列表 | `nvm list` | 记录安装了哪些版本 |
 | Claude Code 配置 | `~/.claude/` | settings、project memories、skills |
-| VS Code 配置 | `AppData\Roaming\Code\User\` | settings.json、snippets |
+| VS Code 配置 | `AppData\Roaming\Code\User\` | settings.json、snippets。**先检查 snippets 目录是否有内容**，空目录不需要备份 |
 | VS Code 扩展 | `code --list-extensions` | 记录扩展列表 |
 | Windows Terminal | `AppData\Local\Packages\Microsoft.WindowsTerminal_...\LocalState\settings.json` | 终端配置 |
 | Python pip 包 | `pip list` | 记录全局包 |
@@ -55,12 +55,18 @@ git config --global user.email
 
 **3. 应用配置文件**（常见位置）
 
-| 应用 | 可能的配置位置 |
-|------|------|
-| Chrome | `AppData\Local\Google\Chrome\User Data\Default\Bookmarks` |
-| Obsidian | `%APPDATA%\obsidian\` |
-| Docker | `~/.docker\` |
-| FlClash | 安装目录下的配置 |
+| 应用 | 可能的配置位置 | 扫描技巧 |
+|------|------|------|
+| Chrome 书签 | `AppData\Local\Google\Chrome\User Data\` | 不要只找 Default，搜索所有 Profile 目录下的 Bookmarks 文件 |
+| Obsidian | `%APPDATA%\obsidian\` | 直接复制 |
+| Docker | `~/.docker\` | 检查是否存在 |
+| FlClash | 安装目录下的配置 | 检查是否存在 |
+
+Chrome 书签的实际路径因人而异 — 有人在 Default Profile，有人有多个 Profile（Profile 7、8、9 等）。正确的扫描方式：
+```powershell
+Get-ChildItem "$env:LOCALAPPDATA\Google\Chrome\User Data" -Recurse -Filter "Bookmarks" -ErrorAction SilentlyContinue
+```
+这会找到所有 Profile 的书签文件，避免遗漏
 
 **4. 项目和本地文件**
 
@@ -181,11 +187,40 @@ git remote -v
 
 ### 第六步：验证备份完整性
 
-备份完成后，验证：
-1. 每个备份目录是否存在且非空
-2. 关键配置文件能正常读取（`Get-Content` 抽查）
-3. 记录备份盘剩余空间
-4. 生成一份还原指南（告诉重装后的自己怎么恢复）
+备份完成后，执行自动审查：
+
+```powershell
+# 逐项检查备份目录
+$backupRoot = "<备份盘>:\Windows重装备份\<日期>"
+$checks = @(
+    @{ Name = "dotfiles"; Path = "$backupRoot\dotfiles"; Critical = $true; Files = @(".gitconfig", ".npmrc") }
+    @{ Name = "ssh"; Path = "$backupRoot\ssh"; Critical = $false; Note = "可能没有密钥（用 HTTPS）" }
+    @{ Name = "vscode"; Path = "$backupRoot\vscode"; Critical = $true; Files = @("settings.json") }
+    @{ Name = "vscode-extensions"; Path = "$backupRoot\vscode-extensions"; Critical = $true; Files = @("extensions.txt") }
+    @{ Name = "terminal"; Path = "$backupRoot\terminal"; Critical = $false }
+    @{ Name = "claude"; Path = "$backupRoot\claude"; Critical = $true }
+    @{ Name = "skills"; Path = "$backupRoot\skills"; Critical = $true }
+    @{ Name = "chrome"; Path = "$backupRoot\chrome"; Critical = $false; Note = "如果为空，检查是否漏了多 Profile" }
+    @{ Name = "npm-global-list"; Path = "$backupRoot\npm-global-list"; Critical = $false }
+    @{ Name = "dev-env-info"; Path = "$backupRoot\dev-env-info"; Critical = $false }
+)
+
+foreach ($c in $checks) {
+    $exists = Test-Path $c.Path
+    $hasContent = $exists -and (Get-ChildItem $c.Path -Recurse -File -ErrorAction SilentlyContinue).Count -gt 0
+    $status = if (-not $exists) { "缺失" } elseif (-not $hasContent) { "空目录" } else { "完整" }
+    Write-Output "$($c.Name): $status"
+}
+```
+
+重点检查：
+1. **chrome 目录是否为空** — 如果为空，说明漏了多 Profile 书签，用 `Get-ChildItem` 搜索所有 Profile 的 Bookmarks 文件补上
+2. **ssh 目录是否只有 config 和 known_hosts** — 如果没有 id_rsa/id_ed25519 等密钥文件，标注"此机器未使用 SSH 密钥，恢复时跳过"
+3. **关键配置文件可读** — `Get-Content` 抽查 .gitconfig、.npmrc、settings.json
+4. **记录备份盘剩余空间**
+5. **Git 仓库全部 push 完成** — 所有 repo 的 `git status` 都是 clean
+
+生成一份审查报告，呈现给人类确认。
 
 ### 第七步：生成两份文档
 
