@@ -1,205 +1,235 @@
 ---
 name: windows-restore
 description: >
-  Windows 全盘重装后的环境恢复向导。当用户刚重装完 Windows 系统，需要恢复开发环境、配置文件、工具链时使用此 skill。
-  触发条件：用户提到"重装系统后恢复"、"新系统环境配置"、"还原备份"、"从备份恢复环境"、
-  "刚装完系统"、"帮我恢复环境"、"按照备份恢复"等场景。即使用户没有明确说"恢复"，
-  只要上下文表明这是全新 Windows 系统需要还原工作环境，就应该触发。
+  Windows 全盘重装后的环境恢复向导。读取备份中的 machine-profile.json 自动适配任何人的环境，
+  逐层恢复开发工具、配置文件、项目仓库。当用户提到"重装系统后恢复"、"新系统环境配置"、
+  "还原备份"、"从备份恢复环境"、"刚装完系统"、"帮我恢复环境"、"按照备份恢复"时触发。
+  即使用户没明确说"恢复"，只要上下文表明是全新 Windows 需要还原环境，就应该触发。
+  核心价值：零硬编码，读取 profile 自动适配，任何人都能用。
 ---
 
 # Windows 环境恢复向导
 
-你正在协助人类完成 Windows 全盘重装后的环境恢复。这不是普通的软件安装——这是一次从零到完整工作环境的系统性重建。
+协助人类完成 Windows 重装后的环境恢复。从零到完整工作环境的系统性重建。
+
+这个 skill 不硬编码任何用户信息。所有恢复数据来自备份中的 `machine-profile.json` — 这个文件是备份 skill 自动生成的环境镜像，包含了重装前的完整系统状态。
 
 ## 核心原则
 
-**人类主权**：人类掌握最终决策权。你负责执行技术操作、生成方案、排查问题。人类决定是否执行、安装路径、优先级。不得自行决定安装软件或修改系统配置。
+**人类主权**：人类决定是否执行、安装路径、优先级。不得自行安装软件或修改系统配置，每步确认。
 
-**做减法**：不装暂时不用的工具。能 winget 装的不要手动下载。不恢复可重建的内容（node_modules、.git、pnpm store、npm cache）。
+**做减法**：不装暂时不用的工具。能 winget 装的不手动下载。不恢复可重建的内容。
 
-**量变质变**：每完成一层，验证所有工具能正常调用（`--version`），检查配置文件路径正确（旧用户名→新用户名，旧盘符→新盘符），发现问题立刻告知人类。
+**量变质变**：每层完成后验证工具能正常调用，检查路径正确，发现问题立刻告知人类。
+
+## 恢复前置：定位并读取 profile
+
+恢复的第一件事是找到备份盘上的 `machine-profile.json`：
+
+```powershell
+# 搜索所有可移动盘
+$drives = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Root -match "^[D-Z]:" }
+foreach ($d in $drives) {
+    $profilePath = Get-ChildItem "$($d.Root)Windows重装备份" -Recurse -Filter "machine-profile.json" -ErrorAction SilentlyContinue
+    if ($profilePath) {
+        Write-Output "找到: $($profilePath.FullName)"
+        break
+    }
+}
+```
+
+读取 profile 后，所有后续步骤的数据都从这里来。如果找不到 profile，告知人类并退回手动模式。
 
 ## 恢复序列
 
-按层级从上到下执行。前一层完成并通过验证后，才进入下一层。每层开始前向人类说明即将做什么，获得确认后执行。
+按层级执行。前一层完成并通过验证后，才进入下一层。
 
 ### 第一层：工作基础
 
-目标：让电脑能上网、能用 AI、能输入。
+目标：能上网、能用 AI、能输入。
 
-1. 安装浏览器 → Google Chrome
-2. 安装 VPN → FlClash
-3. 安装输入法 → 微信输入法、智谱AI输入法
-4. 安装 AI 基础设施 → CC Switch、AutoGLM
-5. 安装解压工具 → WinRAR
+安装顺序（根据 profile 中的 apps.installed 判断）：
+1. 浏览器 → Google Chrome（`winget install Google.Chrome`）
+2. 解压工具 → WinRAR（`winget install RARLab.WinRAR`）
+3. 输入法 → 根据人类偏好
+4. 其他基础工具 → 按 profile 记录
 
-验证：浏览器能打开网页、输入法切换正常、AI 工具可启动。
+验证：浏览器能打开网页。
 
 ### 第二层：开发环境
 
 目标：能运行代码、能用 AI 编程。
 
-1. **Git**
-   - `winget install Git.Git`
-   - 还原 .gitconfig（从备份的 dotfiles/ 目录复制到 `~/.gitconfig`）
-   - **注意**：检查 .gitconfig 中 editor 路径是否匹配新系统
+所有版本号和配置从 profile 读取，不硬编码。
 
-2. **SSH**
-   - 还原 ssh/ 目录到 `~/.ssh/`
-   - **注意**：先检查备份里是否真的有密钥文件（id_rsa、id_ed25519 等）。如果只有 config 和 known_hosts，说明之前就没有用 SSH 密钥，跳过即可
+**1. Git**
+```powershell
+winget install Git.Git
+```
+还原 .gitconfig → `~/.gitconfig`
+- 用 profile.backup_meta.source_paths.gitconfig 定位备份文件
+- **替换旧用户名**：profile 中的 `system.username`（如 "Administrator"）→ 当前 `$env:USERNAME`
+- **替换旧盘符**：如果路径变了，替换 .gitconfig 中的盘符
 
-3. **Node.js（NVM for Windows）**
-   - 下载安装 NVM for Windows（https://github.com/yuruotong1/nvm-windows/releases）
-   - `nvm install 25.2.1`
-   - `nvm install 22.22.0`
-   - `nvm use 25.2.1`
+**2. SSH**
+- 检查 profile.ssh.has_keys
+- 如果 `true`：还原 ssh/ 目录到 `~/.ssh/`
+- 如果 `false`：跳过，告知人类"之前没有使用 SSH 密钥"
 
-4. **pnpm**
-   - `npm install -g pnpm`
+**3. Node.js（NVM for Windows）**
+```
+下载 NVM for Windows: https://github.com/yuruotong1/nvm-windows/releases
+```
+按 profile.node.versions 列表逐个安装：
+```powershell
+nvm install <version>
+```
+最后 `nvm use <profile.node.active_version>`
 
-5. **npm 配置**
-   - 还原 .npmrc（从备份的 dotfiles/ 目录复制到 `~/.npmrc`）
-   - **注意**：检查 prefix 和 cache 路径中的盘符和用户名是否匹配新系统
+**4. pnpm**
+```powershell
+npm install -g pnpm
+```
 
-6. **Python**
-   - `winget install Python.Python.3.14`
+**5. npm 配置**
+还原 .npmrc → `~/.npmrc`
+- 替换 profile.system.username → 当前用户名
+- 替换旧盘符 → 新盘符
+- 确认 prefix 和 cache 路径在新系统上有效
 
-7. **VS Code**
-   - 安装 VS Code
-   - 还原 settings.json → `AppData\Roaming\Code\User\`
-   - 还原 snippets（如果备份中有的话）→ `AppData\Roaming\Code\User\snippets\`
-   - 批量安装扩展：
-     ```powershell
-     Get-Content <备份路径>\vscode-extensions\extensions.txt | ForEach-Object { code --install-extension $_ }
-     ```
+**6. Python**
+```powershell
+winget install Python.Python.<profile.python 中记录的大版本号>
+```
 
-8. **Claude Code**
-   - `npm install -g @anthropic-ai/claude-code`
-   - 还原 .claude/ 目录（settings.json、settings.local.json、projects/）
+**7. VS Code**
+```powershell
+winget install Microsoft.VisualStudioCode
+```
+- 还原 settings.json（从 profile 定位备份路径）
+- 如果 profile.vscode.has_snippets=true，还原 snippets
+- 批量安装扩展：
+```powershell
+$extensions = Get-Content <备份路径>\vscode-extensions\extensions.txt
+$extensions | ForEach-Object { code --install-extension $_ }
+```
 
-9. **Claude Skills**
-   - 还原 skills/ 目录到 `~/.claude/skills/`
+**8. Claude Code**（如果 profile 中有记录）
+```powershell
+npm install -g @anthropic-ai/claude-code
+```
+还原 ~/.claude/ 目录（settings、projects）。
 
-10. **Windows Terminal**
-    - 还原 settings.json 到 `AppData\Local\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\`
+**9. Claude Skills**（如果有备份）
+还原 skills/ 到 `~/.claude/skills/`。
 
-11. **Chrome 书签**
-    - 如果备份了多个 Profile 的书签文件（Profile-7-Bookmarks 等），先安装 Chrome 并登录 Google 账号同步
-    - 如果没有 Google 同步：把备份的 Bookmarks 文件复制到对应 Profile 目录下
-    - Profile 目录位置：`AppData\Local\Google\Chrome\User Data\Profile N\`
+**10. Windows Terminal**（如果有备份）
+还原 settings.json 到 Terminal 的 LocalState 目录。
 
-验证：`git --version`、`node --version`、`pnpm --version`、`python --version`、`code --version`、`claude --version` 全部通过。
+**11. Chrome 书签**（如果有备份）
+先安装 Chrome 并让人类登录 Google 账号同步。
+如果没有 Google 同步：按 profile.chrome.profiles_with_bookmarks 列表，把每个 Profile 的 Bookmarks 文件复制到对应目录。
+
+**验证：**
+```powershell
+git --version
+node --version
+pnpm --version
+python --version
+code --version
+claude --version
+```
 
 ### 第三层：项目恢复
 
 目标：所有代码项目就位。
 
-从 GitHub clone：
+**Git 仓库恢复**：从 profile.git_repos 读取所有仓库信息，生成 clone 命令：
+
 ```powershell
-# 在工作区目录执行
-git clone https://github.com/AdgaiWalker/AdgaiWalker.git blog
-git clone https://github.com/AdgaiWalker/desk.git "FerrySpec世界自适应提示词工程框架"
-git clone https://github.com/AdgaiWalker/set-app.git set-UX
-git clone https://github.com/AdgaiWalker/Walker-skills-test.git 转化记录
-git clone https://github.com/MiniMax-AI/skills.git skills
+$workspace = "<人类指定的工作区路径>"
+cd $workspace
+
+# 逐个 clone
+# profile.git_repos 中每个条目：
+#   git clone <remote> "<name>"
 ```
 
-从备份复制本地独有文件（J 盘桌面完整备份里的非 Git 项目）。
+告知人类哪些仓库会被 clone，确认后执行。
 
-Blog 恢复：在 blog 目录执行 `pnpm install`。
+**本地独有文件**：如果有 workspace-backup 目录，复制非 Git 项目到工作区。
 
-验证：每个 clone 的目录能 `git status`，blog 能 `pnpm dev` 启动。
+**项目依赖安装**：对包含 package.json 的项目执行 `pnpm install`。
 
-### 第四层：设计工具（按需）
+**验证：**
+- 每个 clone 的目录能 `git status`
+- 主要项目能正常启动（如 `pnpm dev`）
 
-当人类需要做设计时安装：
-- Adobe（PR、AU 从备份直接解压；PS 需先用 WinRAR 合并分卷）
-- Figma 中文版、Blender、Pencil（VS Code 扩展）
+### 第四层：全局包恢复
 
-### 第五层：自媒体工具（按需）
+从 profile.npm_global_packages 读取包列表，批量安装：
 
-当人类需要做自媒体时安装：
-- OBS Studio → `winget install OBSProject.OBSStudio`
-- 剪映专业版、必剪 → 官网下载
-
-## 备份文件位置
-
-备份在 J 盘（恢复 U 盘）的 `Windows重装备份\2026-05-18\` 下：
-
-| 目录 | 内容 |
-|------|------|
-| `dotfiles\` | .gitconfig, .npmrc |
-| `ssh\` | SSH 配置和密钥（可能没有密钥，如果只有 config 和 known_hosts 说明之前就用 HTTPS） |
-| `vscode\` | settings.json, snippets |
-| `vscode-extensions\` | 扩展列表 |
-| `terminal\` | Windows Terminal 设置 |
-| `claude\` | Claude Code 配置和项目记忆 |
-| `skills\` | Claude Skills + Minimax Skills |
-| `chrome\` | Chrome 书签（可能有多个 Profile：Profile-7、Profile-8 等） |
-| `obsidian\` | Obsidian 配置 |
-| `npm-global-list\` | npm 全局包列表 |
-| `dev-env-info\` | 环境版本快照 |
-
-桌面完整备份在 `J:\桌面完整备份\`。
-
-## 蓝图 vs 现实对比
-
-恢复过程中，你的核心职责是对比"蓝图"（重装前的理想状态）和"现实"（当前系统状态），识别偏差并修复。
-
-关键蓝图数据：
-- Git 用户：AdgaiWalker / 15328084233@163.com
-- Node 版本：25.2.1 / 22.22.0
-- Python 版本：3.14.0
-- 博客技术栈：Astro 6 + Tailwind v4 + MDX
-- VS Code 扩展：16 个（见 extensions.txt）
-- npm 全局包：13 个（见 npm-global.txt）
-
-## 注意事项
-
-- 路径中的 `Administrator` 可能需要改为新用户名
-- .npmrc 的 prefix/cache 路径需要确认新盘符
-- .gitconfig 的 editor 路径需要更新
-- GitHub 凭据：重装后第一次 push 需要重新登录
-- I 盘是 FAT32 格式，单文件上限 4GB
-
-## npm 全局包参考
-
-关键全局包（按优先级）：
-```
-@anthropic-ai/claude-code
-pnpm
-@ast-grep/cli
-playwright
-serve
-openclaw
+```powershell
+npm install -g <package1> <package2> ...
 ```
 
-其他按需安装的包见 `npm-global-list\npm-global.txt`。
+### 第五层：按需工具
+
+根据 profile 中记录的应用，告知人类哪些可以按需安装：
+- 设计工具（Adobe、Figma 等）
+- 自媒体工具（OBS、剪映等）
+- 其他专业工具
+
+不主动安装，等人类需要时再装。
 
 ## 恢复后审查
 
-每完成一层，执行审查：
+全部完成后，执行最终检查：
 
 ```powershell
-# 版本验证
+# 1. 版本验证
 Write-Output "git: $(git --version)"
 Write-Output "node: $(node --version)"
 Write-Output "pnpm: $(pnpm --version)"
 Write-Output "python: $(python --version)"
 
-# 配置路径检查 — 确保旧用户名/盘符没有残留
+# 2. 配置路径检查 — 确保没有旧用户名/盘符残留
 $gitconfig = Get-Content ~/.gitconfig -Raw
-if ($gitconfig -match "Administrator") { Write-Output "警告: .gitconfig 中仍有旧用户名 Administrator" }
-
 $npmrc = Get-Content ~/.npmrc -Raw
-if ($npmrc -match "Administrator") { Write-Output "警告: .npmrc 中仍有旧用户名 Administrator" }
+$oldUser = "<从 profile.system.username 读取>"
+if ($gitconfig -match $oldUser) { Write-Output "警告: .gitconfig 中仍有旧用户名 $oldUser" }
+if ($npmrc -match $oldUser) { Write-Output "警告: .npmrc 中仍有旧用户名 $oldUser" }
+
+# 3. SSH 检查
+if (<profile.ssh.has_keys>) {
+    $keys = Get-ChildItem ~/.ssh -Filter "id_*" -ErrorAction SilentlyContinue
+    if ($keys.Count -eq 0) { Write-Output "警告: SSH 密钥未恢复" }
+}
+
+# 4. VS Code 扩展数量对比
+$installed = (code --list-extensions).Count
+$expected = <profile.vscode.extensions 数组长度>
+Write-Output "VS Code 扩展: $installed/$expected"
+
+# 5. Git 仓库数量
+$repos = <profile.git_repos 数组长度>
+$cloned = (Get-ChildItem <workspace> -Directory -Filter ".git" -Recurse -ErrorAction SilentlyContinue).Count
+Write-Output "Git 仓库: $cloned/$repos"
 ```
 
-最终审查清单：
-1. 所有 `--version` 检查通过
-2. .gitconfig 里没有旧用户名/旧盘符
-3. .npmrc 里没有旧用户名/旧盘符
-4. VS Code 能启动，扩展列表完整
-5. Claude Code 能运行，skills 目录存在
-6. `git push` 测试（第一次需要重新登录 GitHub）
-7. blog 能 `pnpm dev` 启动
+审查清单：
+1. 所有 --version 检查通过
+2. 配置文件无旧用户名/旧盘符残留
+3. VS Code 扩展数量匹配
+4. Git 仓库全部 clone 完成
+5. `git push` 测试（第一次需重新登录 GitHub）
+6. 主要项目能正常启动
+
+## 注意事项
+
+- profile.system.username → 新系统用户名的替换是恢复中最容易出错的地方
+- .npmrc 的 prefix/cache 盘符可能变化
+- .gitconfig 的 editor 路径可能变化
+- GitHub 凭据：第一次 push 需重新登录
+- FAT32 盘单文件上限 4GB
+- 有些工具可能没有安装（profile 中对应字段为 null），自动跳过
