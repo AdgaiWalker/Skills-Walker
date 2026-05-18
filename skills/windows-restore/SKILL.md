@@ -22,6 +22,35 @@ description: >
 
 **量变质变**：每层完成后验证工具能正常调用，检查路径正确，发现问题立刻告知人类。
 
+## AI 能力边界（诚实说）
+
+AI 不是万能的。恢复过程中有些事 AI 能自动完成，有些必须人类手动。搞清楚分工很重要，避免浪费时间等待一个注定失败的自动安装。
+
+### AI 能自动完成的
+- **winget 安装**：Git、VS Code、Python、Chrome、WinRAR、OBS 等（`winget install <id>`）
+- **npm 全局包**：pnpm、claude-code、playwright、ast-grep 等（`npm install -g <pkg>`）
+- **Git 操作**：clone 仓库、恢复 .gitconfig、push 验证
+- **配置文件恢复**：复制 .npmrc、settings.json、ssh 目录、替换路径
+- **验证检查**：--version、路径检查、完整性审查
+
+### AI 装不了，需要人类手动安装的
+- **NVM for Windows** — 必须从 GitHub releases 下载 GUI 安装包。装完 NVM 后，AI 才能接管 `nvm install <version>`
+- **输入法** — 微信输入法、搜狗等，都需要下载安装器
+- **VPN 工具** — FlClash、Clash 等
+- **AI 桌面应用** — CC Switch、AutoGLM 等
+- **Adobe 全家桶** — 需要解压安装包、运行安装器
+- **设计工具** — Figma、Blender 等
+- **自媒体工具** — 剪映、必剪、直播伴侣等
+- **其他需要 GUI 安装器的软件**
+
+### 恢复流程的正确模式
+
+```
+AI 自动安装能装的 → 生成「人类待办清单」→ 人类手动装剩下的 → AI 验证全部完成
+```
+
+每完成一层，AI 把"需要人类手动安装的"整理成清单，附上下载链接或说明。不要试图自动安装 GUI 软件，会失败。
+
 ## 恢复前置：定位并读取 profile
 
 恢复的第一件事是找到备份盘上的 `machine-profile.json`：
@@ -48,13 +77,21 @@ foreach ($d in $drives) {
 
 目标：能上网、能用 AI、能输入。
 
-安装顺序（根据 profile 中的 apps.installed 判断）：
-1. 浏览器 → Google Chrome（`winget install Google.Chrome`）
-2. 解压工具 → WinRAR（`winget install RARLab.WinRAR`）
-3. 输入法 → 根据人类偏好
-4. 其他基础工具 → 按 profile 记录
+**AI 自动安装：**
+```powershell
+winget install Google.Chrome
+winget install RARLab.WinRAR
+```
 
-验证：浏览器能打开网页。
+**人类待办清单（AI 生成，人类执行）：**
+根据 profile 中记录的应用，列出需要手动安装的：
+- 输入法（微信输入法 / 搜狗 / 其他 profile 记录的）
+- VPN 工具（FlClash / 其他）
+- AI 桌面应用（CC Switch / AutoGLM / 其他）
+
+每个待办项附上：软件名、用途、下载方式（官网/备份盘路径）。
+
+验证：浏览器能打开网页、输入法切换正常。
 
 ### 第二层：开发环境
 
@@ -76,15 +113,22 @@ winget install Git.Git
 - 如果 `true`：还原 ssh/ 目录到 `~/.ssh/`
 - 如果 `false`：跳过，告知人类"之前没有使用 SSH 密钥"
 
-**3. Node.js（NVM for Windows）**
-```
-下载 NVM for Windows: https://github.com/yuruotong1/nvm-windows/releases
-```
-按 profile.node.versions 列表逐个安装：
+**3. Node.js（需要人类先装 NVM）**
+
+这一步是 AI 和人类的交接点：
+
+**人类手动操作：**
+- 从 https://github.com/yuruotong1/nvm-windows/releases 下载 NVM for Windows 安装包
+- 运行安装器，完成 NVM 安装
+- 告诉 AI "NVM 装好了"
+
+**AI 接管（人类装完 NVM 后）：**
 ```powershell
-nvm install <version>
+# 按 profile.node.versions 列表逐个安装
+nvm install <version1>
+nvm install <version2>
+nvm use <profile.node.active_version>
 ```
-最后 `nvm use <profile.node.active_version>`
 
 **4. pnpm**
 ```powershell
