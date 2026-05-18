@@ -17,16 +17,16 @@ mode: agent
 
 ## 口令
 
-| 用户说  | AI 执行                                                      | 人配合               | AI 引导                       |
-| ---- | ---------------------------------------------------------- | ----------------- | --------------------------- |
-| 安装   | 检测环境 → 等 Node.js 装好 → 装 OpenClaw → `openclaw onboard`      | 安装 Node.js、在向导中点选 | Node.js 安装引导（见下）、配置向导选择（见下） |
-| 配置密钥 | 等用户提供 Key → 配置 API Key                                     | 去获取 API Key       | API Key 获取引导（见下）            |
-| 测试   | `openclaw doctor` → 解读结果                                   | -                 | -                           |
-| 干活   | 解释风险 → 等确认 → `openclaw config set tools.profile full`      | 确认                | 解释风险（见风险说明）                 |
-| 安全模式 | `openclaw config set tools.profile safe`                   | -                 | -                           |
-| 状态   | `openclaw --version` + `openclaw config get tools.profile` | -                 | -                           |
-| 卸载   | `openclaw uninstall` → `npm rm -g openclaw`                | 确认、空格勾选、回车        | 按空格勾选前三项，回车确认               |
-| 装插件  | 根据需求执行安装                                                   | -                 | -                           |
+| 用户说  | AI 执行                                                                   | 人配合               | AI 引导                       |
+| ---- | ----------------------------------------------------------------------- | ----------------- | --------------------------- |
+| 安装   | 检测环境 → 等 Node.js 装好 → 装 OpenClaw → `openclaw onboard`                   | 安装 Node.js、在向导中点选 | Node.js 安装引导（见下）、配置向导选择（见下） |
+| 配置密钥 | 等用户提供 Key → 配置 API Key                                                  | 去获取 API Key       | API Key 获取引导（见下）            |
+| 测试   | `openclaw doctor` → 解读结果                                                | -                 | -                           |
+| 干活   | 解释风险 → 等确认 → `openclaw config set tools.profile full`                   | 确认                | 解释风险（见风险说明）                 |
+| 安全模式 | `openclaw config set tools.profile safe`                                | -                 | -                           |
+| 状态   | `openclaw --version` + `openclaw config get tools.profile`              | -                 | -                           |
+| 卸载   | `openclaw uninstall` → `npm rm -g openclaw` | 确认、空格勾选、回车        | 按空格勾选前三项，回车确认               |
+| 装插件  | 根据需求执行安装                                                                | -                 | -                           |
 
 ---
 
@@ -86,6 +86,9 @@ AI 切换到"干活模式"前，告知用户：
 AI 执行：打开新终端窗口运行 `openclaw uninstall`
 
 操作：按空格勾选所有，回车确认
+
+openclaw uninstall操作完后，执行
+    npm rm -g openclaw
 
 验证：`openclaw --version` 提示找不到命令即已移除
 
