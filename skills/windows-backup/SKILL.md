@@ -23,16 +23,37 @@ description: >
 **1. 基础系统信息**
 
 ```powershell
-# 用户名和系统版本
 $env:USERNAME
-[System.Environment]::OSVersion
-# 或者
 (Get-CimInstance Win32_OperatingSystem).Caption
+# 检查管理员权限
+$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 ```
 
-**2. 开发工具版本快照**
+**2. 工作区自动发现**
 
-逐个运行，失败的跳过（说明没装）：
+不要假设工作区在桌面。自动搜索含 .git 最多的目录：
+
+```powershell
+$candidates = @(
+    "$env:USERPROFILE\Desktop",
+    "$env:USERPROFILE",
+    "D:\", "E:\", "F:\"
+)
+$bestPath = $null
+$bestCount = 0
+foreach ($p in $candidates) {
+    if (-not (Test-Path $p)) { continue }
+    $count = (Get-ChildItem $p -Directory -Depth 2 -Filter ".git" -ErrorAction SilentlyContinue).Count
+    if ($count -gt $bestCount) { $bestCount = $count; $bestPath = $p }
+}
+Write-Output "建议工作区: $bestPath (发现 $bestCount 个 Git 仓库)"
+```
+
+让人类确认或指定其他路径。
+
+**3. 开发工具版本快照**
+
+逐个运行，失败跳过（说明没装）。用单独的 `get` 命令获取 npm 配置，不要解析 `npm config ls` 的完整输出：
 
 ```powershell
 git --version
@@ -46,59 +67,64 @@ python --version
 pip list 2>$null
 code --list-extensions
 npm list -g --depth=0
-npm config ls
+npm config get prefix
+npm config get cache
+npm config get registry
 pnpm store path
 ```
 
-**3. 配置文件定位**
+**4. 配置文件定位**
 
-逐项检查是否存在，记录实际路径：
+逐项检查，记录实际路径。用环境变量展开记录语义路径：
 
-| 配置 | 检查路径 | 检查方式 |
-|------|---------|---------|
-| Git 配置 | `~/.gitconfig` | `Test-Path` |
-| SSH | `~/.ssh/` | 检查目录内容，**确认是否有密钥文件**（id_rsa、id_ed25519、id_ecdsa 等）。如果只有 config/known_hosts，标记 `has_keys: false` |
-| npm 配置 | `~/.npmrc` | `Test-Path`，记录 prefix/cache 路径 |
-| VS Code | `AppData\Roaming\Code\User\settings.json` | `Test-Path` |
-| VS Code snippets | `AppData\Roaming\Code\User\snippets\` | 检查是否有内容 |
-| Windows Terminal | `AppData\Local\Packages\Microsoft.WindowsTerminal_*\LocalState\settings.json` | 用通配符搜索 |
-| Claude Code | `~/.claude/` | `Test-Path`，记录大小 |
-| Docker | `~/.docker/` | `Test-Path` |
-| Obsidian | `%APPDATA%\obsidian\` | `Test-Path` |
+| 配置 | 检查方式 | 记录语义路径 |
+|------|---------|-------------|
+| Git 配置 | `Test-Path ~/.gitconfig` | `%USERPROFILE%\.gitconfig` |
+| SSH | 检查目录内容，确认是否有 id_rsa/id_ed25519 等密钥文件 | `%USERPROFILE%\.ssh\` |
+| npm 配置 | `Test-Path ~/.npmrc` | `%USERPROFILE%\.npmrc` |
+| VS Code | `Test-Path "$env:APPDATA\Code\User\settings.json"` | `%APPDATA%\Code\User\settings.json` |
+| VS Code snippets | 检查 snippets 目录是否有文件 | `%APPDATA%\Code\User\snippets\` |
+| Windows Terminal | 通配符搜索 `Microsoft.WindowsTerminal_*\LocalState\settings.json` | `%LOCALAPPDATA%\Packages\Microsoft.WindowsTerminal_*\LocalState\settings.json` |
+| Claude Code | `Test-Path ~/.claude/` | `%USERPROFILE%\.claude\` |
+| Docker | `Test-Path ~/.docker/` | `%USERPROFILE%\.docker\` |
+| Obsidian | `Test-Path "$env:APPDATA\obsidian\"` | `%APPDATA%\obsidian\` |
 
-Chrome 书签需要特殊处理 — 不要只找 Default：
+Chrome 书签搜索所有 Profile：
 ```powershell
-Get-ChildItem "$env:LOCALAPPDATA\Google\Chrome\User Data" -Recurse -Filter "Bookmarks" -ErrorAction SilentlyContinue
-```
-记录找到的所有 Profile 名和对应路径。
-
-**4. Git 仓库扫描**
-
-扫描工作区目录，找到所有 Git 仓库：
-```powershell
-Get-ChildItem -Path <工作区> -Directory -Recurse -Filter ".git" -ErrorAction SilentlyContinue
+Get-ChildItem "$env:LOCALAPPDATA\Google\Chrome\User Data" -Directory -ErrorAction SilentlyContinue |
+  Where-Object { Test-Path "$($_.FullName)\Bookmarks" } |
+  ForEach-Object { $_.Name }
 ```
 
-对每个仓库记录：
-- 本地目录名
-- `git remote get-url origin`（远程地址）
-- `git status` 是否 clean
-- `git log --oneline -1`（最新提交）
-- 是否有未 push 的 commit
+**5. Git 仓库扫描**
 
-**5. 已安装应用**
+在确认的工作区内扫描：
+```powershell
+Get-ChildItem -Path <工作区> -Directory -Depth 2 -Filter ".git" -ErrorAction SilentlyContinue
+```
+
+对每个仓库记录：目录名、remote URL、status、最新 commit、是否有未 push 的 commit。
+
+**6. 已安装应用**
 
 ```powershell
 winget list
 ```
 
+如果 winget 不可用（Windows 10 早期版本），fallback 到注册表扫描：
+```powershell
+Get-ItemProperty "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*" |
+  Select-Object DisplayName, DisplayVersion |
+  Where-Object { $_.DisplayName }
+```
+
 ### 第二步：生成 machine-profile.json
 
-把扫描结果写入一个标准化的 JSON 文件。这个文件是整个 skill 的核心产出 — 它是恢复 skill 的蓝图。
+核心产出。这个 JSON 是恢复 skill 的蓝图，必须完整且正确。
 
 ```json
 {
-  "generated_at": "<ISO 8601 时间戳>",
+  "generated_at": "<ISO 8601>",
   "generator": "windows-backup skill",
   "system": {
     "username": "<当前用户名>",
@@ -106,61 +132,80 @@ winget list
     "workspace_path": "<工作区路径>"
   },
   "git": {
-    "user_name": "<git user.name>",
-    "user_email": "<git user.email>"
+    "user_name": "<值>",
+    "user_email": "<值>"
   },
   "ssh": {
-    "has_keys": "<true/false>",
-    "note": "<如果有密钥列出文件名，否则说明原因>"
+    "has_keys": true,
+    "key_files": ["id_rsa", "id_ed25519"],
+    "note": "<说明>"
   },
   "node": {
-    "versions": ["<从 nvm list 提取>"],
-    "active_version": "<当前版本>",
-    "npm_version": "<版本号>",
-    "pnpm_version": "<版本号>",
-    "pnpm_store_path": "<路径>",
-    "npm_prefix": "<从 npm config ls 提取>",
-    "npm_cache": "<从 npm config ls 提取>",
-    "npm_registry": "<从 npm config ls 提取>"
+    "versions": ["<列表>"],
+    "active_version": "<值>",
+    "npm_version": "<值>",
+    "pnpm_version": "<值>",
+    "pnpm_store_path": "<值>",
+    "npm_prefix": "<值>",
+    "npm_cache": "<值>",
+    "npm_registry": "<值>"
   },
   "python": {
-    "version": "<版本号>",
-    "packages": ["<pip list 输出>"]
+    "version": "<值>",
+    "packages": ["<列表>"]
   },
   "vscode": {
-    "extensions": ["<code --list-extensions 输出>"],
-    "has_snippets": "<true/false>"
+    "extensions": ["<列表>"],
+    "has_snippets": true
   },
   "chrome": {
-    "profiles_with_bookmarks": ["<找到的所有 Profile>"]
+    "profiles_with_bookmarks": ["<列表>"]
   },
-  "npm_global_packages": ["<从 npm list -g 提取包名>"],
+  "npm_global_packages": ["<列表>"],
   "git_repos": [
-    { "name": "<目录名>", "remote": "<远程地址>", "status": "<clean/dirty>" }
+    { "name": "<目录名>", "remote": "<URL>", "status": "<clean/dirty>", "unpushed": false }
   ],
   "apps": {
-    "installed": ["<winget list 分类整理>"]
+    "installed": ["<列表>"]
   },
   "backup_meta": {
+    "backup_root_path": "<备份根目录的绝对路径>",
+    "disk_volume_label": "<外接盘的卷标>",
     "source_paths": {
-      "gitconfig": "<实际路径>",
-      "npmrc": "<实际路径>",
-      "ssh": "<实际路径>",
-      "vscode_settings": "<实际路径>",
-      "vscode_snippets": "<实际路径或null>",
-      "terminal_settings": "<实际路径或null>",
-      "claude_config": "<实际路径>",
-      "chrome_bookmarks": ["<各Profile的实际路径>"],
-      "obsidian": "<实际路径或null>"
+      "gitconfig": "<绝对路径>",
+      "gitconfig_semantic": "%USERPROFILE%\\.gitconfig",
+      "npmrc": "<绝对路径>",
+      "npmrc_semantic": "%USERPROFILE%\\.npmrc",
+      "ssh": "<绝对路径>",
+      "ssh_semantic": "%USERPROFILE%\\.ssh",
+      "vscode_settings": "<绝对路径或null>",
+      "vscode_settings_semantic": "%APPDATA%\\Code\\User\\settings.json",
+      "vscode_snippets": "<绝对路径或null>",
+      "terminal_settings": "<绝对路径或null>",
+      "claude_config": "<绝对路径或null>",
+      "chrome_bookmarks": ["<各Profile的绝对路径>"],
+      "obsidian": "<绝对路径或null>"
     }
   }
 }
 ```
 
-这个 JSON 的设计原则：
-- **restore skill 只需要读这一个文件**就能知道恢复什么、从哪 clone、装什么版本
-- `backup_meta.source_paths` 记录了每个配置文件的精确位置，方便复制
-- 没有安装的工具对应的字段为空数组或 null，restore 时自动跳过
+**关键设计点：**
+- 每个路径同时记录绝对路径和语义路径（用 `%USERPROFILE%`、`%APPDATA%` 等环境变量）
+- restore 优先用语义路径（环境变量展开），fallback 到绝对路径
+- 未安装的工具对应字段为 `null` 或空数组 `[]`
+- `disk_volume_label` 记录外接盘卷标，恢复时按卷标匹配
+
+**原子写入**（防止写入中途断电导致 JSON 损坏）：
+```powershell
+$tmpFile = "$backupRoot\machine-profile.json.tmp"
+$jsonContent | Set-Content -Path $tmpFile -Encoding UTF8
+# 验证 JSON 合法性
+try { Get-Content $tmpFile -Raw | ConvertFrom-Json | Out-Null } catch {
+    Write-Error "JSON 验证失败"; return
+}
+Move-Item $tmpFile "$backupRoot\machine-profile.json" -Force
+```
 
 ### 第三步：向人类呈现扫描结果
 
@@ -191,109 +236,182 @@ winget list
 
 ### 第四步：确认备份目标
 
-问人类：
-1. 备份到哪个盘？
-2. 备份盘容量（用 `Get-PSDrive` 检查）
-3. 预估总量 vs 可用空间
+问人类备份到哪个盘。获取盘符后，**自动检查**：
 
-空间不够时按优先级砍。注意 FAT32 单文件上限 4GB。
+```powershell
+$targetDrive = "<人类指定的盘符，如 E:>"
+$drive = Get-PSDrive -Name $targetDrive.Substring(0,1)
+
+# 1. 检查文件系统格式
+$volume = Get-Volume -DriveLetter $targetDrive.Substring(0,1) -ErrorAction SilentlyContinue
+Write-Output "文件系统: $($volume.FileSystemType)"
+
+if ($volume.FileSystemType -eq "FAT32") {
+    Write-Output "警告: FAT32 格式，单文件上限 4GB。建议格式化为 exFAT 或 NTFS。"
+    Write-Output "  如果有大文件（Adobe 安装包等），需要用 WinRAR 分卷压缩。"
+}
+if ($volume.FileSystemType -eq "exFAT") {
+    Write-Output "注意: exFAT 没有日志，传输中断可能损坏文件。备份完成后务必验证。"
+}
+
+# 2. 检查可用空间 vs 预估大小
+# 逐个估算需要备份的目录大小
+$dirs = @(
+    @{ Name = "dotfiles"; Path = "$env:USERPROFILE\.gitconfig" },
+    @{ Name = "claude"; Path = "$env:USERPROFILE\.claude" },
+    @{ Name = "skills"; Path = "$env:USERPROFILE\.claude\skills" }
+)
+$totalMB = 0
+foreach ($d in $dirs) {
+    if (Test-Path $d.Path) {
+        $size = (Get-ChildItem $d.Path -Recurse -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1MB
+        $totalMB += $size
+    }
+}
+Write-Output "预估配置文件备份: $([math]::Round($totalMB)) MB"
+Write-Output "外接盘可用: $([math]::Round($drive.Free / 1GB)) GB"
+
+if ($totalMB * 1MB -gt $drive.Free * 0.9) {
+    Write-Output "警告: 空间可能不够（预留 10% 余量）"
+}
+
+# 3. 记录卷标
+Write-Output "盘卷标: $($volume.FileSystemLabel)"
+```
 
 ### 第五步：执行备份
 
-创建目录结构：
+**让人类确认备份目录名**（不硬编码 `Windows重装备份`）：
 ```
-<备份盘>:\Windows重装备份\<日期>\
+默认: <盘>:\system-backup\<日期>\
+人类可以自定义目录名
+```
+
+创建目录结构，目录名由人类决定：
+```
+<备份目录>\
 ├── machine-profile.json   ← 核心：环境镜像
-├── dotfiles\              ← .gitconfig, .npmrc 等
-├── ssh\                   ← SSH 配置（如果有密钥）
-├── vscode\                ← settings.json, snippets（如果有）
-├── vscode-extensions\     ← extensions.txt
-├── terminal\              ← Windows Terminal settings（如果有）
-├── claude\                ← .claude/（如果有）
-├── skills\                ← skills 目录（如果有）
-├── chrome\                ← 书签（按 Profile 分）
-├── obsidian\              ← Obsidian 配置（如果有）
-├── npm-global-list\       ← npm-global.txt
-├── dev-env-info\          ← env-snapshot.txt
-└── apps-list\             ← 应用清单.md
+├── dotfiles\
+├── ssh\
+├── vscode\
+├── vscode-extensions\
+├── terminal\
+├── claude\
+├── skills\
+├── chrome\
+├── obsidian\
+├── npm-global-list\
+├── dev-env-info\
+└── apps-list\
 ```
 
 工作区备份单独目录（排除可重建内容）：
 ```
-<备份盘>:\workspace-backup\
+<备份目录>\..\workspace-backup\
 ```
 
-复制用 robocopy（排除可重建内容）：
+**复制前检查 Chrome 是否运行**（书签文件被锁定时 robocopy 会静默跳过）：
 ```powershell
-robocopy <源> <目标> /E /MT:8 /R:1 /W:1 /XD node_modules .git .next .cache .pnpm-store
+if (Get-Process chrome -ErrorAction SilentlyContinue) {
+    Write-Output "Chrome 正在运行，书签文件可能被锁定。建议关闭 Chrome 后再备份书签。"
+    # 不强制关闭，让人类决定
+}
+```
+
+**robocopy 命令**（路径用引号包裹，支持空格和中文）：
+```powershell
+robocopy "$source" "$target" /E /MT:8 /R:1 /W:1 /XD node_modules .git .next .cache .pnpm-store
+```
+
+**检查 robocopy 退出码**（0-7 都正常，8+ 才是错误）：
+```powershell
+$exitCode = $LASTEXITCODE
+if ($exitCode -ge 8) {
+    Write-Error "复制失败！退出码: $exitCode（8=部分失败，16=严重错误）"
+} else {
+    Write-Output "复制完成，退出码: $exitCode"
+}
 ```
 
 **关键：machine-profile.json 放在备份根目录，这是恢复 skill 的入口。**
 
 ### 第六步：代码安全检查
 
-检查所有 Git 仓库，确保代码安全：
-
 ```powershell
-# 对 machine-profile.json 中的每个 git_repos 条目
-cd <仓库路径>
-git status          # 检查是否有未提交的改动
-git log origin/main..HEAD --oneline  # 检查是否有未 push 的 commit
+foreach ($repo in profile.git_repos) {
+    cd "<工作区>\$($repo.name)"
+    $status = git status --porcelain
+    if ($status) {
+        Write-Output "$($repo.name): 有未提交的改动"
+        # 人类确认后 commit + push
+    }
+    $unpushed = git log "$($repo.remote)/main..HEAD" --oneline 2>$null
+    if ($unpushed) {
+        Write-Output "$($repo.name): 有 $($unpushed.Count) 个未 push 的 commit"
+        # push 失败不阻断流程，标记 unpushed=true
+    }
+}
 ```
 
-如果有未提交或未 push 的变更：
-1. `git add` + `git commit`
-2. `git push`
-3. 确认远程有最新代码
-
-更新 machine-profile.json 中的 repos status 为 "clean"。
+push 失败时在 profile 中标记 `"unpushed": true`，不阻断。已 commit 的代码本地是安全的。
 
 ### 第七步：验证备份完整性
 
 ```powershell
-$backupRoot = "<备份盘>:\Windows重装备份\<日期>"
+$backupRoot = "<备份目录>"
 
-# 1. machine-profile.json 必须存在且是合法 JSON
-$profile = Get-Content "$backupRoot\machine-profile.json" | ConvertFrom-Json
+# 1. 验证 profile JSON 完整性
+try {
+    $profile = Get-Content "$backupRoot\machine-profile.json" -Raw -Encoding UTF8 | ConvertFrom-Json
+} catch {
+    Write-Error "machine-profile.json 损坏: $($_.Exception.Message)"
+    Write-Output "尝试手动检查备份文件..."
+    return
+}
 
-# 2. 逐项检查备份目录
-$checks = @("dotfiles", "ssh", "vscode", "vscode-extensions", "terminal", "claude", "skills", "chrome", "npm-global-list", "dev-env-info")
-
-foreach ($name in $checks) {
+# 2. 逐项检查（不存在=未安装对应工具，空目录=可能遗漏）
+foreach ($name in @("dotfiles", "ssh", "vscode", "vscode-extensions", "terminal", "claude", "skills", "chrome", "npm-global-list", "dev-env-info")) {
     $path = Join-Path $backupRoot $name
     if (-not (Test-Path $path)) {
-        Write-Output "${name}: 目录不存在（可能此机器未安装对应工具）"
+        Write-Output "${name}: 不存在（可能未安装对应工具）"
         continue
     }
     $fileCount = (Get-ChildItem $path -Recurse -File -ErrorAction SilentlyContinue).Count
     if ($fileCount -eq 0) {
-        Write-Output "${name}: 空目录 — 需要检查是否遗漏"
+        Write-Output "${name}: 空目录 — 检查是否遗漏"
     } else {
-        Write-Output "${name}: 完整 ($fileCount 个文件)"
+        Write-Output "${name}: $fileCount 个文件"
     }
 }
 
-# 3. 关键文件抽查
-Get-Content "$backupRoot\dotfiles\.gitconfig" | Select-Object -First 3
-Get-Content "$backupRoot\dotfiles\.npmrc" | Select-Object -First 3
+# 3. 抽查关键文件
+$keyFiles = @(
+    "$backupRoot\dotfiles\.gitconfig",
+    "$backupRoot\dotfiles\.npmrc",
+    "$backupRoot\vscode-extensions\extensions.txt"
+)
+foreach ($f in $keyFiles) {
+    if (Test-Path $f) {
+        $content = Get-Content $f -Encoding UTF8 -First 2
+        Write-Output "$f -> 可读"
+    }
+}
 ```
-
-重点排查：
-- **chrome 为空** → 漏了多 Profile，用 `Get-ChildItem -Recurse -Filter "Bookmarks"` 搜索补上
-- **ssh 只有 config/known_hosts** → 正常，标记 has_keys: false
-- **所有仓库 status=clean** → 确认代码安全
 
 ### 第八步：生成文档
 
-1. **应用与工具清单.md** — 按 winget list 整理分类
+1. **应用与工具清单.md** — 按已安装应用分类整理
 2. **还原指南.md** — 包含恢复步骤概要
 
 ## 常见陷阱
 
 1. **FAT32 单文件 4GB 限制** — 大文件用 WinRAR 分卷
 2. **USB 传大量小文件极慢** — 排除 node_modules 等
-3. **Chrome 书签在多个 Profile** — 不要只找 Default
-4. **SSH 可能没有密钥** — 有些人只用 HTTPS
-5. **路径用户名会变** — profile 记录了旧路径，恢复时需替换
+3. **Chrome 书签在多个 Profile** — 搜索所有 Profile，不限于 Default
+4. **SSH 可能没有密钥** — 检查后再决定是否备份
+5. **路径用户名会变** — profile 同时记录绝对路径和语义路径
 6. **GitHub 凭据** — 重装后第一次 push 需重新登录
-7. **PE 盘不会被格式化** — 大文件可放 PE 盘
+7. **robocopy 退出码** — 0-7 正常，8+ 才是错误
+8. **Chrome 运行时书签被锁** — 备份前提示关闭 Chrome
+9. **中文用户名/路径编码** — 所有文件操作用 UTF-8
+10. **exFAT 无日志** — 传输中断可能损坏，备份后必须验证
