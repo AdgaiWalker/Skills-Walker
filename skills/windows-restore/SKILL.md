@@ -1,344 +1,337 @@
 ---
 name: windows-restore
 description: >
-  Windows 全盘重装后的环境恢复向导。读取备份中的 machine-profile.json 自动适配任何人的环境，
-  逐层恢复开发工具、配置文件、项目仓库。当用户提到"重装系统后恢复"、"新系统环境配置"、
-  "还原备份"、"从备份恢复环境"、"刚装完系统"、"帮我恢复环境"、"按照备份恢复"时触发。
+  Windows 全盘重装后的环境恢复向导。自动检测用户类型（普通人/开发者），从备份恢复个人数据
+  和/或开发环境。当用户提到"重装系统后恢复"、"新系统环境配置"、"还原备份"、"从备份恢复"、
+  "刚装完系统"、"帮我恢复环境"、"按照备份恢复"时触发。
   即使用户没明确说"恢复"，只要上下文表明是全新 Windows 需要还原环境，就应该触发。
-  核心价值：零硬编码，读取 profile 自动适配，任何人都能用。
+  支持任何人使用：不需要懂技术，能看懂中文就行。
 ---
 
 # Windows 环境恢复向导
 
-协助人类完成 Windows 重装后的环境恢复。从零到完整工作环境的系统性重建。
-
-这个 skill 不硬编码任何用户信息。所有恢复数据来自备份中的 `machine-profile.json`。
+重装完系统了？别慌，你的数据都在备份盘上。我来帮你找回来。
 
 ## 核心原则
 
-**人类主权**：人类决定是否执行、安装路径、优先级。不得自行安装软件或修改系统配置，每步确认。
+**人类主权**：人类决定恢复什么、装到哪里。我不自行安装软件或修改系统配置。
 
-**做减法**：不装暂时不用的工具。不恢复可重建的内容。
+**做减法**：只恢复需要的，不装暂时不用的工具。
 
-**量变质变**：每层完成后验证，发现问题立刻告知人类。
+**量变质变**：每一步完成后验证，发现问题立刻告诉人类。
 
 ## AI 能力边界
 
-### AI 能自动完成的
-- **npm 全局包**：pnpm、claude-code、playwright 等
-- **Git 操作**：clone 仓库、恢复配置、push 验证
-- **配置文件恢复**：复制并替换路径
-- **验证检查**：版本检查、路径审查
-- **NVM 版本安装**：人类装好 NVM 后执行 `nvm install`
+AI 能做的：复制文件、安装命令行工具、恢复配置、验证完整性。
+AI 做不了的：安装需要点击的软件（浏览器、输入法、微信等）。
 
-### 人类自己装的（人人都会，不需要 AI）
-- 浏览器、输入法、VPN、聊天工具
-- WinRAR、OBS、Adobe、剪映
-- 任何需要 GUI 安装器的软件
-
-### 恢复流程
 ```
-人类自己装日常应用 → AI 恢复开发环境和配置 → AI 验证完整性
+人类自己装日常应用（浏览器、微信、输入法...）
+        ↓
+AI 恢复个人数据和配置（从备份复制文件、恢复书签...）
+        ↓
+AI 验证完整性（检查文件数量、路径是否正确）
 ```
 
-## 恢复前置：定位并读取 profile
+## 恢复前置：找到备份
 
-### Step 1: 找到备份盘
+### 找到 profile
 
-外接盘的盘符不固定（备份时是 J:，恢复时可能是 E:）。按卷标优先匹配：
+外接盘插上后，盘符可能变了（备份时是 J:，现在可能是 E:）。
 
 ```powershell
 $profilePath = $null
 
-# 1. 先按卷标匹配（profile 中记录了 disk_volume_label）
-$volumeLabel = "<如果已知>"
-if ($volumeLabel) {
-    $match = Get-Volume | Where-Object { $_.FileSystemLabel -eq $volumeLabel }
-    if ($match) {
-        $profilePath = Get-ChildItem "$($match.DriveLetter):\" -Recurse -Depth 3 -Filter "machine-profile.json" -ErrorAction SilentlyContinue | Select-Object -First 1
-    }
+# 1. 遍历所有盘，限制深度 3 层，搜索 machine-profile.json
+$drives = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Root -match "^[D-Z]:" }
+foreach ($d in $drives) {
+    $found = Get-ChildItem "$($d.Root)" -Recurse -Depth 3 -Filter "machine-profile.json" -ErrorAction SilentlyContinue
+    if ($found) { $profilePath = $found[0]; break }
 }
 
-# 2. Fallback: 遍历所有盘符搜索（限制深度 3 层，避免大盘搜索过慢）
-if (-not $profilePath) {
-    $drives = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Root -match "^[D-Z]:" }
-    foreach ($d in $drives) {
-        $found = Get-ChildItem "$($d.Root)" -Recurse -Depth 3 -Filter "machine-profile.json" -ErrorAction SilentlyContinue
-        if ($found) {
-            $profilePath = $found[0]
-            break
-        }
-    }
-}
-
-if ($profilePath) {
-    Write-Output "找到 profile: $($profilePath.FullName)"
-} else {
-    Write-Output "未找到 machine-profile.json。请手动指定备份目录路径。"
-    return
-}
+if ($profilePath) { Write-Output "找到备份: $($profilePath.FullName)" }
+else { Write-Output "没找到备份文件。请确认外接盘已插入，或告诉我备份在哪个路径。" }
 ```
 
-### Step 2: 读取 profile（带容错）
+### 读取 profile（带容错）
 
 ```powershell
 try {
     $profile = Get-Content $profilePath.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
 } catch {
-    Write-Error "machine-profile.json 损坏: $($_.Exception.Message)"
-    Write-Output "请检查备份文件完整性。如果 JSON 损坏，需要手动恢复配置。"
-    Write-Output "备份目录下应该有 dotfiles/、ssh/、vscode/ 等子目录，可以手动复制。"
-    return
-}
-
-# 确认必要字段存在
-if (-not $profile.system -or -not $profile.git) {
-    Write-Error "profile 缺少必要字段（system/git）。文件可能不完整。"
+    Write-Output "备份文件损坏了。但别担心，备份目录下还有 personal/、dotfiles/ 等文件夹。"
+    Write-Output "我们可以手动恢复——你告诉我哪些目录有，我来帮你复制。"
     return
 }
 ```
 
-读取成功后，所有后续步骤的数据都从 `$profile` 来。
+### 确认用户类型
 
-## 路径替换（最危险的环节）
+读取 profile.user_type：
+- `"general"` → 普通人模式：只恢复个人数据
+- `"developer"` → 开发者模式：恢复个人数据 + 开发环境
 
-恢复配置文件时需要把旧机器的路径替换为新机器的路径。这是最容易出错的地方。
+告知人类："你的备份是 [普通人/开发者] 模式的，我会恢复 [个人数据 / 个人数据+开发环境]。"
 
-### 错误做法
+---
+
+## 第一层：个人数据恢复（所有人都要做）
+
+这是最重要的。个人数据丢了就真的没了。
+
+**前提：人类已经自己装好了**浏览器、微信等基本应用。
+
+### 1. 桌面文件
+
 ```powershell
-# 绝对不要这样做！"Admin" 会把 "Administrator" 替换成 "张三istrator"
-$content -replace $oldUser, $newUser
+$source = "<备份目录>\personal\desktop"
+$target = "$env:USERPROFILE\Desktop"
+robocopy "$source" "$target" /E /MT:8 /R:1 /W:1
 ```
 
-### 正确做法：按路径分隔符限定边界
+### 2. 文档
+
+```powershell
+$source = "<备份目录>\personal\documents"
+$target = [Environment]::GetFolderPath("MyDocuments")
+robocopy "$source" "$target" /E /MT:8 /R:1 /W:1
+```
+
+### 3. 下载文件夹
+
+```powershell
+$source = "<备份目录>\personal\downloads"
+$target = "$env:USERPROFILE\Downloads"
+robocopy "$source" "$target" /E /MT:8 /R:1 /W:1
+```
+
+### 4. 图片
+
+```powershell
+$source = "<备份目录>\personal\pictures"
+$target = [Environment]::GetFolderPath("MyPictures")
+robocopy "$source" "$target" /E /MT:8 /R:1 /W:1
+```
+
+### 5. 微信聊天记录（如果有）
+
+微信数据恢复有特殊要求：**必须先登录微信一次再退出**，让微信创建用户文件夹，然后覆盖。
+
+```powershell
+if (Test-Path "<备份目录>\personal\wechat") {
+    Write-Output "微信聊天记录恢复步骤："
+    Write-Output "  1. 先打开微信，登录你的账号"
+    Write-Output "  2. 登录后完全退出微信（托盘图标也要关掉）"
+    Write-Output "  3. 告诉我'微信退出了'，我来复制数据"
+    # 人类确认后：
+    $wechatSource = "<备份目录>\personal\wechat\*"
+    $wechatTarget = "$env:USERPROFILE\Documents\WeChat Files"
+    robocopy "$wechatSource" "$wechatTarget" /E /MT:8 /R:1 /W:1
+}
+```
+
+### 6. 浏览器书签
+
+```powershell
+# Chrome：让人类先登录 Google 账号同步
+# 如果没 Google 同步，手动复制 Bookmarks 文件到对应 Profile 目录
+
+# 如果备份了 Chrome 书签文件
+if (Test-Path "<备份目录>\personal\browser-bookmarks") {
+    Write-Output "浏览器书签恢复："
+    Write-Output "  最简单的方法：登录 Google/微软账号自动同步"
+    Write-Output "  如果没有账号同步，告诉我，我帮你手动复制书签文件"
+}
+```
+
+### 7. 浏览器密码提醒
+
+```powershell
+if ($profile.personal_data.browser_passwords_exported -eq $false) {
+    Write-Output "提醒：浏览器保存的密码在备份时没有导出。"
+    Write-Output "  如果你的密码很重要，现在可以在旧备份电脑上导出（如果还没重装的话）。"
+    Write-Output "  或者重新登录各个网站时选择'记住密码'。"
+}
+```
+
+**验证个人数据：**
+```powershell
+$dirs = @(
+    "$env:USERPROFILE\Desktop",
+    [Environment]::GetFolderPath("MyDocuments"),
+    "$env:USERPROFILE\Downloads",
+    [Environment]::GetFolderPath("MyPictures")
+)
+foreach ($d in $dirs) {
+    $count = (Get-ChildItem $d -File -ErrorAction SilentlyContinue).Count
+    Write-Output "$d : $count 个文件"
+}
+```
+
+---
+
+## 第二层：开发环境恢复（只有开发者模式）
+
+只在 `user_type = "developer"` 时执行。普通人直接跳到验证。
+
+### 路径替换（关键环节）
+
+恢复配置文件时需要替换旧机器的路径。用正则边界限定，防止子串误匹配：
 
 ```powershell
 function Repair-ConfigPaths {
-    param(
-        [string]$Content,
-        [string]$OldUsername,
-        [string]$NewUsername,
-        [string]$OldWorkspacePath,
-        [string]$NewWorkspacePath
-    )
-
-    $result = $Content
-
-    # 1. 替换用户名（限定在路径分隔符之间）
-    if ($OldUsername -and $NewUsername -and $OldUsername -ne $NewUsername) {
-        # 匹配 :\<username>\ 或 :\<username>（行尾/引号前）
-        $result = $result -replace "(?<=[\\/])$([regex]::Escape($OldUsername))(?=[\\/`"']|\s|$)", $NewUsername
+    param([string]$Content, [string]$OldUser, [string]$NewUser)
+    if ($OldUser -and $NewUser -and $OldUser -ne $NewUser) {
+        $escaped = [regex]::Escape($OldUser)
+        $Content = $Content -replace "(?<=[\\/])$escaped(?=[\\/`"']|\s|$)", $NewUser
     }
-
-    # 2. 替换工作区路径
-    if ($OldWorkspacePath -and $NewWorkspacePath -and $OldWorkspacePath -ne $NewWorkspacePath) {
-        $result = $result -replace [regex]::Escape($OldWorkspacePath), $NewWorkspacePath
-    }
-
-    return $result
+    return $Content
 }
 ```
 
-### 更安全的做法：语义路径优先
-
-profile 中同时记录了绝对路径和语义路径（如 `%USERPROFILE%\.gitconfig`）。恢复时优先用语义路径展开：
-
+语义路径优先：
 ```powershell
 function Expand-SemanticPath {
-    param([string]$SemanticPath)
-    $expanded = $SemanticPath
-    $expanded = $expanded -replace '%USERPROFILE%', $env:USERPROFILE
-    $expanded = $expanded -replace '%APPDATA%', $env:APPDATA
-    $expanded = $expanded -replace '%LOCALAPPDATA%', $env:LOCALAPPDATA
-    return $expanded
+    param([string]$Path)
+    return $Path -replace '%USERPROFILE%', $env:USERPROFILE `
+                 -replace '%APPDATA%', $env:APPDATA `
+                 -replace '%LOCALAPPDATA%', $env:LOCALAPPDATA
 }
 ```
 
-## 恢复序列
+### Git 配置恢复
 
-按层级执行。前一层完成并通过验证后，才进入下一层。
-
-### 第一层：工作基础
-
-**前提：人类已经自己装好了**浏览器、输入法、VPN 等日常工具。
-
-AI 只做检查：
 ```powershell
-# 确认能联网
-try { Test-NetConnection www.baidu.com -WarningAction SilentlyContinue | Out-Null } catch {}
+# 人类确认已安装 Git
+$gitconfig = Get-Content "<备份目录>\dotfiles\.gitconfig" -Raw -Encoding UTF8
+$gitconfig = Repair-ConfigPaths $gitconfig $profile.system.username $env:USERNAME
+Set-Content -Path "$env:USERPROFILE\.gitconfig" -Value $gitconfig -Encoding UTF8
 ```
 
-### 第二层：开发环境
+### SSH 恢复（如果有密钥）
 
-**1. Git**
-
-确认人类已安装 Git。装好后 AI 恢复配置：
-- 读取 profile.backup_meta 中的 gitconfig 路径
-- 优先用语义路径展开：`%USERPROFILE%\.gitconfig` → `C:\Users\<新用户名>\.gitconfig`
-- 复制备份的 .gitconfig → 目标路径
-- 用 `Repair-ConfigPaths` 替换旧路径
-
-**2. SSH**
-- profile.ssh.has_keys=true → 还原 ssh/ 目录到 `~/.ssh/`
-- profile.ssh.has_keys=false → 跳过
-
-**3. Node.js（需要人类先装 NVM）**
-
-**人类手动操作：**
-- 从 https://github.com/yuruotong1/nvm-windows/releases 下载安装
-- 告诉 AI "NVM 装好了"
-
-**AI 接管：**
 ```powershell
+if ($profile.ssh.has_keys -eq $true) {
+    Copy-Item "<备份目录>\ssh\*" "$env:USERPROFILE\.ssh\" -Recurse -Force
+}
+```
+
+### Node.js（需要人类先装 NVM）
+
+```powershell
+Write-Output "Node.js 安装步骤："
+Write-Output "  1. 打开浏览器访问 https://github.com/yuruotong1/nvm-windows/releases"
+Write-Output "  2. 下载最新的 nvm-setup.exe 并安装"
+Write-Output "  3. 装好后告诉我'NVM装好了'"
+# 人类确认后：
 foreach ($v in $profile.node.versions) {
     nvm install $v
-    if ($LASTEXITCODE -ne 0) {
-        Write-Output "警告: Node $v 安装失败（版本可能已下架或网络不通）"
-        Write-Output "  尝试安装最新 LTS 版本..."
-        # 继续下一个版本
-    }
+    if ($LASTEXITCODE -ne 0) { Write-Output "Node $v 安装失败，跳过" }
 }
 nvm use $profile.node.active_version
 ```
 
-**4. pnpm**
+### npm 配置 + pnpm + 全局包
+
 ```powershell
 npm install -g pnpm
-```
-
-**5. npm 配置**
-
-还原 .npmrc → `~/.npmrc`
-- 用 `Repair-ConfigPaths` 替换路径
-- 确认 prefix 和 cache 的目标目录存在，不存在则创建
-
-**6. Python**
-
-确认人类已安装。版本参考 profile.python.version。
-
-**7. VS Code**
-
-确认人类已安装。AI 恢复配置和扩展：
-```powershell
-# 逐个安装扩展（不批量，避免一个失败全挂）
-$extensions = Get-Content "<备份路径>\vscode-extensions\extensions.txt" -Encoding UTF8
-$failed = @()
-foreach ($ext in $extensions) {
-    code --install-extension $ext 2>$null
-    if ($LASTEXITCODE -ne 0) {
-        $failed += $ext
-    }
-}
-if ($failed.Count -gt 0) {
-    Write-Output "以下扩展安装失败（可能已下架或改名）:"
-    $failed | ForEach-Object { Write-Output "  $_" }
-}
-```
-
-**8. Claude Code**（如果 profile 中有记录）
-```powershell
-npm install -g @anthropic-ai/claude-code
-```
-还原 ~/.claude/ 目录。
-
-**9. Windows Terminal / Chrome 书签 / Obsidian** — 如果有备份，按 profile 恢复。
-
-**验证：**
-```powershell
-git --version; node --version; pnpm --version; python --version; code --version; claude --version
-```
-
-### 第三层：项目恢复
-
-从 profile.git_repos 读取仓库信息。**先检查目标工作区空间：**
-
-```powershell
-$workspace = "<人类指定的工作区路径>"
-$workspaceFree = (Get-PSDrive $workspace.Substring(0,1)).Free
-
-# 粗略估算：每个仓库 clone 后约 100MB-1GB
-$estimatedGB = $profile.git_repos.Count * 0.5
-Write-Output "预估项目大小: ~$estimatedGB GB"
-Write-Output "工作区可用: $([math]::Round($workspaceFree / 1GB)) GB"
-```
-
-空间足够后逐个 clone：
-```powershell
-cd $workspace
-foreach ($repo in $profile.git_repos) {
-    git clone $repo.remote "$($repo.name)"
-    if ($LASTEXITCODE -ne 0) {
-        Write-Output "警告: $($repo.name) clone 失败（仓库可能不存在或网络不通）"
-    }
-}
-```
-
-本地独有文件从 workspace-backup 复制。
-项目依赖：对有 package.json 的目录执行 `pnpm install`。
-
-### 第四层：全局包恢复
-
-**逐个安装**，不批量：
-```powershell
-$failed = @()
+# 还原 .npmrc（替换路径）
+# 逐个安装全局包（一个失败不影响其他）
 foreach ($pkg in $profile.npm_global_packages) {
     npm install -g $pkg 2>$null
-    if ($LASTEXITCODE -ne 0) {
-        $failed += $pkg
-    }
-}
-if ($failed.Count -gt 0) {
-    Write-Output "以下包安装失败:"
-    $failed | ForEach-Object { Write-Output "  $_" }
 }
 ```
 
-### 第五层：按需工具
+### VS Code 扩展
 
-根据 profile 中记录的应用，告知人类可以按需安装的（设计工具、自媒体工具等）。
+```powershell
+# 人类确认已安装 VS Code
+foreach ($ext in $profile.vscode.extensions) {
+    code --install-extension $ext 2>$null
+}
+```
+
+### Claude Code
+
+```powershell
+npm install -g @anthropic-ai/claude-code
+# 还原 .claude/ 目录
+```
+
+---
+
+## 第三层：项目恢复（只有开发者模式）
+
+```powershell
+foreach ($repo in $profile.git_repos) {
+    git clone $repo.remote "$workspace\$($repo.name)"
+    if ($LASTEXITCODE -ne 0) { Write-Output "$($repo.name) clone 失败" }
+}
+```
+
+---
 
 ## 恢复后审查
 
 ```powershell
-# 1. 版本验证
-git --version; node --version; pnpm --version; python --version
-
-# 2. 路径检查（用正则，避免子串误匹配）
-$oldUser = $profile.system.username
-$newUser = $env:USERNAME
-$gitconfig = Get-Content ~/.gitconfig -Raw -Encoding UTF8
-$npmrc = Get-Content ~/.npmrc -Raw -Encoding UTF8
-
-# 只在路径分隔符之间匹配旧用户名
-if ($gitconfig -match "(?<=[\\/])$([regex]::Escape($oldUser))(?=[\\/`"']|\s)") {
-    Write-Output "警告: .gitconfig 中仍有旧用户名 $oldUser 的路径引用"
+# 个人数据检查（所有人）
+Write-Output "=== 个人数据恢复检查 ==="
+$checks = @{
+    "桌面" = "$env:USERPROFILE\Desktop"
+    "文档" = [Environment]::GetFolderPath("MyDocuments")
+    "图片" = [Environment]::GetFolderPath("MyPictures")
 }
-if ($npmrc -match "(?<=[\\/])$([regex]::Escape($oldUser))(?=[\\/`"']|\s)") {
-    Write-Output "警告: .npmrc 中仍有旧用户名 $oldUser 的路径引用"
+foreach ($name in $checks.Keys) {
+    $count = (Get-ChildItem $checks[$name] -File -ErrorAction SilentlyContinue).Count
+    Write-Output "$name : $count 个文件"
 }
 
-# 3. VS Code 扩展对比
-$installed = (code --list-extensions).Count
-$expected = $profile.vscode.extensions.Count
-Write-Output "VS Code 扩展: $installed/$expected"
+# 开发环境检查（开发者模式）
+if ($profile.user_type -eq "developer") {
+    Write-Output ""
+    Write-Output "=== 开发环境检查 ==="
+    git --version; node --version; pnpm --version
 
-# 4. Git 仓库数量
-$repos = $profile.git_repos.Count
-$cloned = (Get-ChildItem $workspace -Directory -Depth 1 -Filter ".git" -ErrorAction SilentlyContinue).Count
-Write-Output "Git 仓库: $cloned/$repos"
-
-# 5. GitHub 认证测试
-git push --dry-run 2>$null
-if ($LASTEXITCODE -ne 0) {
-    Write-Output "注意: GitHub 认证可能需要重新登录（第一次 push 时会弹窗）"
+    # 路径残留检查
+    $gitconfig = Get-Content "$env:USERPROFILE\.gitconfig" -Raw -Encoding UTF8
+    $oldUser = $profile.system.username
+    $escaped = [regex]::Escape($oldUser)
+    if ($gitconfig -match "(?<=[\\/])$escaped(?=[\\/`"']|\s)") {
+        Write-Output "警告: .gitconfig 中仍有旧用户名 $oldUser"
+    }
 }
 ```
 
+---
+
+## 降级模式（没有 profile 时的 fallback）
+
+如果 machine-profile.json 损坏或不存在，从备份目录结构推断：
+
+```powershell
+$backupRoot = "<人类指定的备份路径>"
+Write-Output "你的备份目录结构："
+Get-ChildItem $backupRoot -Directory | ForEach-Object {
+    $count = (Get-ChildItem $_.FullName -Recurse -File -ErrorAction SilentlyContinue).Count
+    Write-Output "  $($_.Name): $count 个文件"
+}
+Write-Output ""
+Write-Output "我看到以下目录可以恢复："
+if (Test-Path "$backupRoot\personal") { Write-Output "  personal/ → 你的个人文件（桌面、文档、图片等）" }
+if (Test-Path "$backupRoot\dotfiles") { Write-Output "  dotfiles/ → 开发配置文件" }
+if (Test-Path "$backupRoot\ssh") { Write-Output "  ssh/ → SSH 配置" }
+if (Test-Path "$backupRoot\vscode") { Write-Output "  vscode/ → VS Code 配置" }
+# ... 让人类选择恢复哪些
+```
+
+---
+
 ## 注意事项
 
-- 路径替换是最容易出错的地方 — 用正则边界限定，不要简单字符串替换
-- 语义路径优先于绝对路径（环境变量展开更安全）
-- 外接盘盘符不固定 — 按卷标匹配，fallback 到深度搜索
-- profile JSON 损坏时有 fallback 提示
-- npm/扩展安装逐个执行，一个失败不影响其他
+- 路径替换用正则边界，不用简单字符串替换
+- 语义路径优先于绝对路径
+- npm/扩展安装逐个执行，失败不影响其他
+- 微信恢复前必须先登录一次再退出
+- 浏览器密码需要手动导出，无法通过文件复制
 - 未安装的工具（null/空数组）自动跳过
+- 外接盘盘符不固定 — 按深度搜索 profile
