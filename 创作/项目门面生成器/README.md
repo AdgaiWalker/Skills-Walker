@@ -162,6 +162,7 @@ npx skills add AdgaiWalker/Walker-skills-test --skill project-front-generator
 
 ## 相关文档
 
+- [发布工作流总图](../发布工作流总图.md)
 - [README框架总纲](README框架总纲.md)
 - [交接字段协议](交接字段协议.md)
 - [各产物评测标准](各产物评测标准.md)
