@@ -12,7 +12,7 @@
 秋知的自创自用 AI 技能仓库。
 按“我要做什么”组织，不按零散提示词或工具名堆目录。
 
-[项目门面生成器](创作/项目门面生成器/README.md) · [秋知X推文发帖生成器](创作/秋知X推文发帖生成器/README.md) · [信息卡截图生成器](创作/信息卡截图生成器/README.md) · [SVG 组装动画器](创作/SVG组装动画器/README.md) · [OpenClaw 管理助手](OpenClaw/管理/README.md) · [个人文件管理体系](管理/文件管理/README.md)
+[项目门面生成器](创作/项目门面生成器/README.md) · [小红书笔记生成器](创作/xiaohongshu-post-generator/SKILL.md) · [README 美化器](创作/README美化器/skill.md) · [秋知X推文发帖生成器](创作/秋知X推文发帖生成器/README.md) · [信息卡截图生成器](创作/信息卡截图生成器/README.md) · [SVG 组装动画器](创作/SVG组装动画器/README.md) · [Windows 备份恢复](windows-reinstall) · [技能制作方法论](元能力/技能制作方法论/skill.md) · [OpenClaw 管理助手](OpenClaw/管理/README.md) · [个人文件管理体系](管理/文件管理/README.md)
 
 </div>
 
@@ -79,14 +79,19 @@ AI 包揽工程型工作，人只处理必须亲手完成的步骤。
 | 分类 | 项目 | 类型 | 状态 | 说明 |
 |:-----|:-----|:----:|:----:|:-----|
 | 创作 | [项目门面生成器](创作/项目门面生成器/README.md) | Skill | ✅ | 生成或重构项目门面，以 README 为核心并处理收尾 |
+| 创作 | [小红书笔记生成器](创作/xiaohongshu-post-generator/SKILL.md) | Skill | ✅ | 把经验、项目、观点变成小红书图文笔记 |
+| 创作 | [README 美化器](创作/README美化器/skill.md) | Skill | ✅ | 只做结构和格式修复，不编造不删内容 |
 | 创作 | [秋知X推文发帖生成器](创作/秋知X推文发帖生成器/README.md) | Skill | ✅ | 按秋知视角生成 X 主帖、跟帖、配图版与线程文案 |
 | 创作 | [信息卡截图生成器](创作/信息卡截图生成器/README.md) | Skill | ✅ | 把内容整理成编辑部风信息卡，并输出 HTML 与固定比例 PNG |
 | 创作 | [SVG组装动画器](创作/SVG组装动画器/README.md) | Skill | ✅ | 把静态 SVG 做成组装动画，并导出透明背景序列帧 |
+| 系统工具 | [Windows 备份](windows-reinstall/windows-backup/SKILL.md) | Skill | ✅ | 重装前扫描备份，自动发现数据源 |
+| 系统工具 | [Windows 恢复](windows-reinstall/windows-restore/SKILL.md) | Skill | ✅ | 重装后按契约还原，按需检查工具 |
+| 元能力 | [技能制作方法论](元能力/技能制作方法论/skill.md) | Skill | ✅ | 从真实测试中迭代健壮技能的方法论 |
+| 元能力 | [技能生成](元能力/技能生成/skill.md) | Skill | ✅ | 将对话提炼为可复用 skill |
 | OpenClaw | [管理助手](OpenClaw/管理/README.md) | Skill | ✅ | OpenClaw 安装、配置、模式切换、诊断、卸载 |
 | OpenClaw | [网关](OpenClaw/网关/work/skill.md) | Skill | 🚧 | AI 代理网关，已有串行版本，仍在迭代 |
 | 管理 | [决策框架](管理/决策框架/skill.md) | Skill | ✅ | 构建结构化价值决策框架 |
 | 管理 | [文件管理](管理/文件管理/README.md) | System | ✅ | 个人文件管理体系，覆盖规划 / 执行 / 复盘 / 备份 |
-| 元能力 | [技能生成](元能力/技能生成/skill.md) | Skill | ✅ | 将对话提炼为可复用 skill |
 
 ## 仓库原则
 
