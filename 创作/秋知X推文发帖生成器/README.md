@@ -51,6 +51,7 @@
 
 - 仓库目录：`creator-publish-workflow / 秋知X推文发帖生成器`
 - 执行规则：[skill.md](./skill.md)
+- 工作流总图：[发布工作流总图](../发布工作流总图.md)
 - 适合先看 README，再让 AI 按 `skill.md` 开始工作
 
 ## 输入合同

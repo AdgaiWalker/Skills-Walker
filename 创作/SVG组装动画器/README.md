@@ -69,6 +69,7 @@
 ## 直接入口
 
 - 执行规则：[skill.md](./skill.md)
+- 工作流总图：[发布工作流总图](../发布工作流总图.md)
 - 动画逻辑：[references/animation_logic.md](./references/animation_logic.md)
 - HTML 模板：[assets/animation_template.html](./assets/animation_template.html)
 
