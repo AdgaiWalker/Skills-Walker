@@ -435,11 +435,7 @@ description: 从零规划并上线服务型副业。分析用户身份匹配最�
 
 ### 7.3 制作指南
 
-根据展示形式，查阅 `references/platform-showcase-rules.md` 获取：
-- 图片/视频类型选择
-- AI生成提示词模板（商品主图、对比图、屏录视频、真人讲解等）
-- 老年受众视频特别注意事项
-- 推荐工具列表
+查阅 `references/visual-production-guide.md` 获取：图片/视频工作流、脚本模板、分镜表模板、AI提示词模板、工具推荐。
 
 ### 输出
 
